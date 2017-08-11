@@ -6,6 +6,7 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.StringTokenizer;
 import java.util.TimeZone;
@@ -27,7 +28,7 @@ import com.pretty_tools.dde.client.DDEClientEventListener;
 /**
  * Subscribe to Meta Trader quotes and publish to Smash.bi
  */
-public class SmashMetaTraderPublisher implements SessionEventCallback
+public class SmashMetaTraderPublisher implements SessionEventCallback 
 {
 	private static long daylightSavingTimeOffset = 0L;
 	private static long standardTimeOffset = 0L;
@@ -89,22 +90,19 @@ System.out.println( "Logging in " + smashUserId + " " + smashPassword );
 		client.login(smashUserId, smashPassword, new LoginResponseCallback());
 		System.out.println( "MT4 DDE started" );
 	}
-	
-	
+
 	/**
-	 * subscribe all
+	 * publish all
 	 */
-	private void subscribeAll()
+	private void publishAll()
 	{	
-		for(String symbol:symbolToDatasetUUIDLookup.keySet())
+		for(Entry<String, String> keyValue:symbolToDatasetUUIDLookup.entrySet())
 		{
 			try
 			{
-				System.out.println( "Subscribing to " + symbol );
-				if ( canPerformDDE )
-				{
-					conversation.startAdvice(symbol);
-				}
+				System.out.println( "Request publish to " + keyValue.getKey() );
+				String datasetUUID = keyValue.getValue();
+				client.publishDataRequest(datasetUUID, new PublishRequestResponseCallback( datasetUUID, keyValue.getKey() ) );
 			}
 			catch( Throwable t )
 			{
@@ -126,10 +124,7 @@ System.out.println( "Logging in " + smashUserId + " " + smashPassword );
 			try
 			{
 				System.out.println( "Subscribing to " + aSymbol );
-				if ( canPerformDDE )
-				{
-					conversation.startAdvice(aSymbol);
-				}
+				client.publishDataRequest(aDatasetUUID, new PublishRequestResponseCallback( aDatasetUUID, aSymbol ) );
 			}
 			catch( Throwable t )
 			{
@@ -181,7 +176,7 @@ System.out.println( "Logging in " + smashUserId + " " + smashPassword );
 		{
 			try
 			{
-				eventDisconnect.await(10, TimeUnit.SECONDS);
+				eventDisconnect.await(10, TimeUnit.SECONDS); 
 			}
 			catch( Throwable t )
 			{}
@@ -264,13 +259,13 @@ System.out.println( "Logging in " + smashUserId + " " + smashPassword );
 		public void onReceive(String aData) 
 		{
 System.out.println( "Receive Login Response " + aData );
-			JsonElement jsonElement = jsonParser.parse(aData);
-			JsonObject jsonObject = jsonElement.getAsJsonObject();
-			if ( jsonObject.get( "responseType" ).getAsInt()==0 )
-			{
+			//JsonElement jsonElement = jsonParser.parse(aData);
+			//JsonObject jsonObject = jsonElement.getAsJsonObject();
+			//if ( jsonObject.get( "responseType" ).getAsInt()==0 )
+			//{
 				smashLoggedIn = true;
-				subscribeAll();				
-			}
+				publishAll();				
+			//}
 		}
 	}
 	
@@ -355,6 +350,45 @@ System.out.println( "POST DATA " + datasetUUID + " " + jsonData + " Size " + que
 				catch( Throwable t )
 				{
 					t.printStackTrace();
+				}
+			}
+		}
+	}
+	
+	/**
+	 * login response callback
+	 */
+	private class PublishRequestResponseCallback implements DataCallback
+	{
+		private String datasetUUID;
+		private String symbol;
+		
+		/**
+		 * create PublishRequestResponseCallback
+		 * @param aDatasetUUID data set UUID
+		 * @param aSymbol symbol
+		 */
+		private PublishRequestResponseCallback( String aDatasetUUID, String aSymbol ){
+			datasetUUID = aDatasetUUID;
+			symbol = aSymbol;
+		}
+		
+		public void onReceive(String aData) 
+		{
+System.out.println( "Receive Publish Response " + aData );
+			JsonElement jsonElement = jsonParser.parse(aData);
+			JsonObject jsonObject = jsonElement.getAsJsonObject();
+			if ( "SUCCESS".equals( jsonObject.get( "status" ).getAsString() ) )
+			{
+				if ( canPerformDDE )
+				{
+					try{
+System.out.println( "Subscribe to " + symbol );						
+						conversation.startAdvice(symbol);
+					}
+					catch( Throwable t ){
+						t.printStackTrace();
+					}
 				}
 			}
 		}
